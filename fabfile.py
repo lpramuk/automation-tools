@@ -6,6 +6,8 @@ import time
 from fabric.api import env, execute, local, put, run
 from StringIO import StringIO
 
+PRODUCTS = ('downstream', 'upstream')
+
 
 def unsubscribe():
     """Unregisters a machine from Red Hat"""
@@ -242,7 +244,7 @@ def reservation():
     env['vm_domain'] = '{target_image}.{vm_domain}'.format(**options)
 
 
-def install_prerequisites():
+def setup_product_prerequisites():
     """Task to ensure that the prerequisites for installation are in place"""
 
     # Full forward and reverse DNS resolution using a fully qualified domain
@@ -284,7 +286,7 @@ def install_prerequisites():
     run('iptables-save > /etc/sysconfig/iptables')
 
 
-def install_nightly(admin_password=None, org_name=None, loc_name=None):
+def setup_nightly(admin_password=None, org_name=None, loc_name=None):
     """Task to install Foreman nightly using katello-deploy script"""
     if admin_password is None:
         admin_password = os.environ.get('ADMIN_PASSWORD', 'changeme')
@@ -328,7 +330,7 @@ def install_nightly(admin_password=None, org_name=None, loc_name=None):
     run('hammer -u admin -p {0} ping'.format(admin_password))
 
 
-def install_satellite(admin_password=None):
+def setup_satellite(admin_password=None):
     """Task to install Satellite 6"""
     if admin_password is None:
         admin_password = os.environ.get('ADMIN_PASSWORD', 'changeme')
@@ -364,8 +366,6 @@ def install_satellite(admin_password=None):
     # Disable yum plugin for sub-man
     run('sed -i -e "s/^enabled.*/enabled=0/" '
         '/etc/yum/pluginconf.d/subscription-manager.conf')
-    # And disable all repos for now
-    run('subscription-manager repos --disable "*"')
 
     run('subscription-manager repos --enable "rhel-{0}-server-rpms"'.format(
         os_version))
@@ -385,35 +385,46 @@ def install_satellite(admin_password=None):
     run('hammer -u admin -p {0} ping'.format(admin_password))
 
 
-def reservation_install(task_name, admin_password=None):
-    """Task to execute reservation, setup_ddns and install_``task_name``
+def product_installer(product, admin_password=None):
+    """Task that do a complete product install
 
-    The ``admin_password`` parameter will be passed to the
-    install_``task_name`` task.
+    The ``admin_password`` argument will define the foreman-admin-password
 
     """
-    task_names = ('nightly', 'satellite')
+    if product not in PRODUCTS:
+        print 'product "{0}" should be one of {1}'.format(
+            product, ', '.join(PRODUCTS))
+        sys.exit(1)
 
-    if task_name not in task_names:
-        print 'task_name "{0}" should be one of {1}'.format(
-            task_name, ', '.join(task_names))
+    # Register and subscribe machine to Red Hat
+    execute(subscribe)
+
+    execute(setup_product_prerequisites)
+
+    if product == 'downstream':
+        execute(setup_satellite, admin_password)
+
+    if product == 'upstream':
+        execute(setup_nightly, admin_password)
+
+    execute(setup_default_capsule)
+
+
+def reservation_product_installer(product, admin_password=None):
+    """Task that do a VM reservation and a complete product install
+
+    The ``admin_password`` argument will define the foreman-admin-password
+
+    """
+    if product not in PRODUCTS:
+        print 'product "{0}" should be one of {1}'.format(
+            product, ', '.join(PRODUCTS))
         sys.exit(1)
 
     execute(reservation)
     execute(setup_ddns, env['vm_domain'], env['vm_ip'], host=env['vm_ip'])
 
-    # Register and subscribe machine to Red Hat
-    execute(subscribe, host=env['vm_ip'])
-
-    execute(install_prerequisites, host=env['vm_ip'])
-
-    if task_name == 'nightly':
-        execute(install_nightly, admin_password, host=env['vm_ip'])
-
-    if task_name == 'satellite':
-        execute(install_satellite, admin_password, host=env['vm_ip'])
-
-    execute(setup_default_capsule, host=env['vm_ip'])
+    execute(product_installer, product, admin_password, host=env['vm_ip'])
 
 
 def partition_disk():

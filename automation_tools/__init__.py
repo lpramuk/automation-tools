@@ -792,7 +792,7 @@ def upstream_install(admin_password=None):
     run('git clone https://github.com/Katello/katello-deploy.git')
 
     # Make sure that SELinux is enabled
-    run('setenforce 1')
+    run('setenforce 0')
     run('yum repolist')
     run('cd katello-deploy && ./setup.rb --skip-installer '
         '--os rhel{os_version}'.format(os_version=os_version))
@@ -842,7 +842,7 @@ def downstream_install(admin_password=None):
     run('yum install -y katello libvirt')
 
     # Make sure that SELinux is enabled
-    run('setenforce 1')
+    run('setenforce 0')
     run('katello-installer -v -d --foreman-admin-password="{0}"'.format(
         admin_password))
 
@@ -877,7 +877,7 @@ def cdn_install():
     run('yum install -y katello libvirt')
 
     # Make sure that SELinux is enabled
-    run('setenforce 1')
+    run('setenforce 0')
     run('katello-installer -v -d --foreman-admin-password="{0}"'.format(
         admin_password))
 
@@ -933,7 +933,7 @@ def iso_install(admin_password=None, check_sigs=False):
             run('./install_packages --nogpgsigs')
 
     # Make sure that SELinux is enabled
-    run('setenforce 1')
+    run('setenforce 0')
     run('katello-installer -v -d --foreman-admin-password="{0}"'.format(
         admin_password))
 
@@ -1010,7 +1010,6 @@ def product_install(distribution, create_vm=False, certificate_url=None):
         execute(setup_default_capsule, host=host)
 
     execute(setup_default_docker, host=host)
-    execute(setup_abrt, host=host)
 
     certificate_url = certificate_url or os.environ.get(
         'FAKE_MANIFEST_CERT_URL')

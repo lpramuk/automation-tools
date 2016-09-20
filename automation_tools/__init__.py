@@ -1039,7 +1039,8 @@ def upstream_install(admin_password=None, run_katello_installer=True,
         return installer_options
 
 
-def downstream_install(admin_password=None, run_katello_installer=True):
+def downstream_install(admin_password=None, run_katello_installer=True,
+                       **kwargs):
     """Task to install Satellite 6
 
     The following environment variables affect this command:
@@ -1129,7 +1130,7 @@ def repofile_install(admin_password=None, run_katello_installer=True,
 
 
 def ak_install(admin_password=None, clean_beaker=True,
-               run_katello_installer=True):
+               run_katello_installer=True, **kwargs):
     """Task to install Satellite 6.3 via Activation Keys
 
     The following environment variables affect this command:
@@ -1200,7 +1201,7 @@ def ak_install(admin_password=None, clean_beaker=True,
         return installer_options
 
 
-def cdn_install(run_katello_installer=True):
+def cdn_install(run_katello_installer=True, **kwargs):
     """Installs Satellite 6 from CDN.
 
     The following environment variables affect this command:
@@ -1232,7 +1233,7 @@ def cdn_install(run_katello_installer=True):
 
 def iso_install(
         admin_password=None, check_gpg_signatures=False,
-        run_katello_installer=True):
+        run_katello_installer=True, **kwargs):
     """Installs Satellite 6 from an ISO image.
 
     The following environment variables affect this command:
@@ -1285,7 +1286,8 @@ def iso_install(
         return installer_options
 
 
-def sam_upstream_install(admin_password=None, run_katello_installer=True):
+def sam_upstream_install(admin_password=None, run_katello_installer=True,
+                         **kwargs):
     """Task to install SAM nightly"""
 
     if admin_password is None:

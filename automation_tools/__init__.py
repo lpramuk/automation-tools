@@ -858,7 +858,7 @@ def vm_create():
         command_args.append('--cpu-feature {cpu_feature}')
 
     if options['bridge'] is not None:
-        command_args.append('-n bridge={bridge}')
+        command_args.append('-n network={bridge}')
     else:
         command_args.append('-n bridge=br0')
 

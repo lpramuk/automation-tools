@@ -2062,9 +2062,6 @@ def product_install(distribution, certificate_url=None, selinux_mode=None, sat_v
     repositories (space-separated list) before OS upgrade, typically OS-
     candidate repo when tesing OS compatibility.
 
-    Every call to a task after the definition ``host = env.get('vm_ip',
-    env['host'])`` must be run by using ``execute`` and passing ``host=host``.
-
     :param str distribution: product distribution wanted to install
     :param str certificate_url: where to fetch a fake certificate.
     :param sat_version: Indicates which satellite version should be installed
@@ -2120,29 +2117,29 @@ def product_install(distribution, certificate_url=None, selinux_mode=None, sat_v
             sys.exit(1)
 
     # if host already exists still fix hostname
-    execute(fix_hostname)
+    fix_hostname()
 
     # If we are using activationkey, subscribe to dogfood server
     # otherwise subscribe to CDN
     if distribution == 'satellite6-activationkey':
-        execute(subscribe_dogfood)
+        subscribe_dogfood()
     else:
-        execute(subscribe, stage=test_in_stage)
+        subscribe(stage=test_in_stage)
         # Enable repos for Satellite and disable other ones
-        execute(enable_satellite_repos,
-                cdn=distribution.endswith('cdn'),
-                beta=distribution.endswith('beta'),
-                sat_version=sat_version,
-                puppet4=puppet4)
+        enable_satellite_repos(
+            cdn=distribution.endswith('cdn'),
+            beta=distribution.endswith('beta'),
+            sat_version=sat_version,
+            puppet4=puppet4)
 
     # Disable BaseOS if using custom image for vault_requests.
-    execute(disable_baseos_repo)
+    disable_baseos_repo()
     # Setting yum stdout log level to be less verbose
-    execute(set_yum_debug_level)
+    set_yum_debug_level()
     # Install some basic packages
-    execute(update_basic_packages)
+    update_basic_packages()
     # Check hostname and start ntpd
-    execute(install_prerequisites)
+    install_prerequisites()
     # If defined, create custom repo with RHEL candidate for OS upgrade
     # OS_UPGRADE_REPOS can be space-separated list of multiple custom repo urls
     if os.environ.get('OS_UPGRADE_REPOS'):
@@ -2152,48 +2149,43 @@ def product_install(distribution, certificate_url=None, selinux_mode=None, sat_v
             'custom_repo_{}'.format(k+1): v
             for (k, v) in zip(range(len(custom_repos)), custom_repos)
         }
-        execute(create_custom_repos, **custom_repos_dict)
+        create_custom_repos(**custom_repos_dict)
     # Update the machine
-    execute(update_packages, warn_only=True)
+    update_packages(warn_only=True)
 
-    execute(setenforce, selinux_mode)
+    setenforce(selinux_mode)
 
-    execute(setup_satellite_firewall)
+    setup_satellite_firewall()
 
-    execute(setup_avahi_discovery)
+    setup_avahi_discovery()
 
-    execute(run_command, os.environ.get('FIX_PREINSTALL'))
+    run_command(os.environ.get('FIX_PREINSTALL'))
     # Sat6.3: enable *internal* puppet4 repo to perform fresh p4 install
     if puppet4 == 'yes' and not distribution.endswith('cdn'):
         puppet4_repo = os.environ.get('PUPPET4_REPO')
         if puppet4_repo:
-            execute(create_custom_repos, puppet4_repo=puppet4_repo)
+            create_custom_repos(puppet4_repo=puppet4_repo)
 
-    # execute returns a dictionary mapping host strings to the given task's return value
-    installer_options.update(
-        next(iter(execute(install_tasks[distribution], run_katello_installer=False).values()))
-    )
+    # call install_tasks hash table function specific for each distribution
+    installer_options.update(install_tasks[distribution](run_katello_installer=False))
 
     # When using VLAN Bridges os.environ.get('BRIDGE') is 'true' and
     # executes with 'interface=eth0' for Satellite6-automation.
     # When using Satellite6-installer one can specify custom interface.
-    if (os.environ.get('BRIDGE') or
-            os.environ.get('NAT') or os.environ.get('INTERFACE')):
+    if (os.environ.get('BRIDGE') or os.environ.get('NAT') or os.environ.get('INTERFACE')):
         # For Client provisioning using Internal Capsule within Lab only
-        execute(setup_firewall, {'udp': (67,)}, flush=False)
+        setup_firewall({'udp': (67,)}, flush=False)
         # If an INTERFACE is specified it will be used otherwise would
         # default to eth0 interface. Helpful for configuring DHCP and
         # DNS capsule services.
         interface = os.environ.get('INTERFACE', 'eth0')
     else:
         # Setup libvirt and fetch virtual bridge information
-        interface = next(iter(execute(setup_default_libvirt).values()))
+        interface = setup_default_libvirt()
     # execute returns a dictionary mapping host strings to the given
     # task's return value
     installer_options.update(
-        next(iter(execute(
-            setup_default_capsule, interface=interface, run_katello_installer=False
-        ).values()))
+        setup_default_capsule(interface=interface, run_katello_installer=False)
     )
 
     # enable ostree feature
@@ -2210,11 +2202,7 @@ def product_install(distribution, certificate_url=None, selinux_mode=None, sat_v
         installer_options.update({'enable-foreman-plugin-remote-execution-cockpit': None})
 
     if os.environ.get('PROXY_INFO'):
-        # execute returns a dictionary mapping host strings to the given
-        # task's return value
-        installer_options.update(
-            next(iter(execute(setup_proxy, run_katello_installer=False).values()))
-        )
+        installer_options.update(setup_proxy(run_katello_installer=False))
 
     if os.environ.get('INSTALLER_OPTIONS'):
         # INSTALLER_OPTIONS are comma separated katello-installer options.
@@ -2225,77 +2213,70 @@ def product_install(distribution, certificate_url=None, selinux_mode=None, sat_v
         )
         installer_options.update(ins_opt_dict)
 
-    execute(
-        katello_installer,
-        distribution=distribution,
-        sat_version=sat_version,
-        **installer_options
-    )
+    katello_installer(distribution=distribution, sat_version=sat_version, **installer_options)
 
-    execute(run_command, os.environ.get('FIX_POSTINSTALL'))
+    run_command(os.environ.get('FIX_POSTINSTALL'))
 
     # Temporary workaround to solve pulp message bus connection issue
     if (sat_version not in ('6.3', '6.4')):
-        execute(set_service_check_status)
+        set_service_check_status()
 
     certificate_url = certificate_url or os.environ.get('FAKE_MANIFEST_CERT_URL')
     if certificate_url:
-        execute(setup_fake_manifest_certificate, certificate_url)
+        setup_fake_manifest_certificate(certificate_url)
 
-    execute(setup_alternate_capsule_ports)
-    execute(setup_default_docker)
-    execute(katello_service, 'restart', sat_version=sat_version)
+    setup_alternate_capsule_ports()
+    setup_default_docker()
+    katello_service('restart', sat_version=sat_version)
     # if we have ssh key to libvirt machine we can setup access to it
     if os.environ.get('LIBVIRT_KEY_URL') is not None:
-        execute(setup_libvirt_key)
+        setup_libvirt_key()
     if sat_version == 'upstream-nightly':
-        execute(install_puppet_scap_client)
-        execute(install_ansible_scap_client)
-    execute(oscap_content)
-    execute(setup_local_rex_key)
+        install_puppet_scap_client()
+        install_ansible_scap_client()
+    oscap_content()
+    setup_local_rex_key()
     # setup_foreman_discovery
     # setup_discovery_task needs to be run at last otherwise, any other
     # tasks like ostree which is re-running installer would re-set the
     # discovery templates as well. Please see #1387179 for more info.
-    execute(setup_foreman_discovery, sat_version=sat_version)
-    execute(setup_default_subnet, sat_version=sat_version)
+    setup_foreman_discovery(sat_version=sat_version)
+    setup_default_subnet(sat_version=sat_version)
     if sat_version not in ('6.3', '6.4'):
-        execute(setup_bfa_prevention)
-    execute(fix_qdrouterd_listen_to_ipv6)
+        setup_bfa_prevention()
+    fix_qdrouterd_listen_to_ipv6()
 
     if os.environ.get('PYTHON_CODE_COVERAGE') == 'true':
         # Setup Python Code Coverage only for the provisoning jobs.
-        execute(setup_python_code_coverage)
+        setup_python_code_coverage()
 
     if os.environ.get('RUBY_CODE_COVERAGE') == 'true':
         # Setup Ruby Code Coverage only for the provisioning jobs.
-        execute(setup_ruby_code_coverage)
-
+        setup_ruby_code_coverage()
         # Configure for Ruby System Code Coverage.
-        execute(setup_rubysys_code_coverage)
-
+        setup_rubysys_code_coverage()
         # Configure for Ruby TFM Code Coverage.
-        execute(setup_rubytfm_code_coverage)
+        setup_rubytfm_code_coverage()
 
     if os.environ.get('EXTERNAL_AUTH') == 'IDM' or os.environ.get('IDM_REALM') == 'true':
         sat6_hostname = os.environ.get('SERVER_HOSTNAME')
         idm_server_ip = os.environ.get('IDM_SERVER_IP')
         execute(cleanup_idm, hostname=sat6_hostname, host=idm_server_ip)
-        execute(enroll_idm)
+        enroll_idm()
     if os.environ.get('EXTERNAL_AUTH') == 'IDM':
-        execute(configure_idm_external_auth)
+        configure_idm_external_auth()
     if os.environ.get('IDM_REALM') == 'true':
-        execute(configure_realm)
+        configure_realm()
 
     if os.environ.get('EXTERNAL_AUTH') == 'AD':
-        execute(enroll_ad)
-        execute(configure_ad_external_auth)
+        enroll_ad()
+        configure_ad_external_auth()
     # Sat6.3: enable puppet4 repo and perform upgraded p4 install
     if puppet4 == 'upgrade':
-        execute(upgrade_puppet, cdn=distribution.endswith('cdn'))
+        upgrade_puppet(cdn=distribution.endswith('cdn'))
     if os.environ.get('HOTFIX') != 'NO_HOTFIX':
-        execute(apply_hotfix)
-    execute(setup_rhv_ca)
+        apply_hotfix()
+    setup_rhv_ca()
 
 
 def fix_qdrouterd_listen_to_ipv6():
